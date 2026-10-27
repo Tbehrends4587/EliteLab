@@ -64,7 +64,7 @@
         content.innerHTML = `<div class="big">${esc(c.name || c.callsign)} ${c.name ? `<span class="muted">(${esc(c.callsign)})</span> ` : ''}<span class="tag">Pinned</span></div>
           ${c.name_source ? `<div class="note">Name from ${esc(c.name_source)}</div>` : ''}
           <div class="grid2">
-            <div><div class="k">Last reported system</div><div class="v"><a href="${inaraSys(c.system)}" target="_blank" rel="noopener">${esc(c.system)}</a></div></div>
+            <div><div class="k">Last reported system</div><div class="v">${c.system ? `<a href="${inaraSys(c.system)}" target="_blank" rel="noopener">${esc(c.system)}</a> <button type="button" class="mini" data-copy="${esc(c.system)}" aria-label="Copy last reported system" title="Copy system name to clipboard">Copy</button>` : 'Unknown'}</div></div>
             <div><div class="k">Distance from you</div><div class="v">${c.distance != null ? fmt(c.distance) + ' Ly' : 'Unknown'}</div></div>
             <div><div class="k">Docking access</div><div class="v">${esc(c.docking || 'Unknown')}</div></div>
             <div><div class="k">Location source</div><div class="v">${esc(c.source === 'journal' ? 'Your journal' : c.source)}</div></div>
