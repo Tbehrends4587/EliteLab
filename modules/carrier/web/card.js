@@ -2,12 +2,13 @@
 (() => {
   const { esc, fmt, inaraSys } = Lab.util;
   const when = value => value ? esc(new Date(value).toLocaleString()) : 'unknown';
+  const carrierLabel = c => c.name ? `${c.name} (${c.callsign})` : c.callsign;
 
   Lab.map.addLayer('pinned-carrier', {
     label: 'Pinned carrier', color: '#2fd4ff', z: 9,
     points(S) {
       const c = S.carrier?.pinned, p = c?.star_pos;
-      return p ? [{ name: c.callsign, x: p[0], y: p[1], z: p[2], r: 5, color: '#2fd4ff',
+      return p ? [{ name: carrierLabel(c), x: p[0], y: p[1], z: p[2], r: 5, color: '#2fd4ff',
         kind: 'carrier', label: true, sub: `Last reported: ${c.system}`, copy: c.system }] : [];
     },
   });
@@ -43,7 +44,7 @@
       const state = S.carrier || {}, c = state.pinned;
       const select = el.querySelector('[data-carrier-select]');
       const visited = state.visited || [];
-      const options = visited.map(r => `<option value="${esc(r.market_id)}">${esc(r.callsign)} - ${esc(r.system)}</option>`).join('');
+      const options = visited.map(r => `<option value="${esc(r.market_id)}">${esc(carrierLabel(r))} - ${esc(r.system)}</option>`).join('');
       if (select.dataset.options !== options) {
         const previous = select.value;
         select.innerHTML = options || '<option value="">No carriers visited yet</option>';
@@ -55,17 +56,18 @@
       el.querySelector('[data-carrier-action="pin"]').disabled = !visited.length;
       el.querySelector('[data-carrier-action="unpin"]').disabled = !c;
       const refresh = el.querySelector('[data-carrier-action="refresh"]');
-      refresh.disabled = !c || state.offline || state.refreshing;
+      refresh.disabled = !visited.length || state.offline || state.refreshing;
       refresh.textContent = state.refreshing ? 'Checking...' : 'Refresh';
       el.querySelectorAll('[data-carrier-action][data-pending]').forEach(button => { button.disabled = true; });
       const content = el.querySelector('[data-carrier-content]');
       if (c) {
-        content.innerHTML = `<div class="big">${esc(c.callsign)} <span class="tag">Pinned</span></div>
+        content.innerHTML = `<div class="big">${esc(c.name || c.callsign)} ${c.name ? `<span class="muted">(${esc(c.callsign)})</span> ` : ''}<span class="tag">Pinned</span></div>
+          ${c.name_source ? `<div class="note">Name from ${esc(c.name_source)}</div>` : ''}
           <div class="grid2">
             <div><div class="k">Last reported system</div><div class="v"><a href="${inaraSys(c.system)}" target="_blank" rel="noopener">${esc(c.system)}</a></div></div>
             <div><div class="k">Distance from you</div><div class="v">${c.distance != null ? fmt(c.distance) + ' Ly' : 'Unknown'}</div></div>
             <div><div class="k">Docking access</div><div class="v">${esc(c.docking || 'Unknown')}</div></div>
-            <div><div class="k">Source</div><div class="v">${esc(c.source === 'journal' ? 'Your journal' : c.source)}</div></div>
+            <div><div class="k">Location source</div><div class="v">${esc(c.source === 'journal' ? 'Your journal' : c.source)}</div></div>
           </div>
           <div class="note">Services: ${esc((c.services || []).join(', ') || 'Unknown')}</div>
           <div class="note">Last reported: ${when(c.observed_at)}<br>Last checked: ${when(state.checked_at)}</div>

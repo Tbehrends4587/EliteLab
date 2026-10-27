@@ -30,9 +30,106 @@ class CarrierTests(unittest.TestCase):
             "carrier_docking_access": "All", "services": [{"name": "Refuel"}], **values,
         }}
 
-    def refresh(self, response):
-        with patch.object(config, "OFFLINE", False), patch.object(self.core.services, "fetch_json", return_value=response):
+    def refresh(self, response, names=None):
+        def fetch(url, **kwargs):
+            return (names or {"carriers": []}) if url.startswith("https://edastro.com/") else response
+
+        with patch.object(config, "OFFLINE", False), patch.object(self.core.services, "fetch_json", side_effect=fetch):
             return self.call("refresh_followed_carrier")
+
+    def names(self, **values):
+        return {"carriers": [{"marketID": 3700000001, "callsign": "tst-001", "name": "Tax Write-Off", **values}]}
+
+    def test_names_resolve_without_a_pin_and_do_not_change_location(self):
+        with patch.object(config, "OFFLINE", False), patch.object(self.core.services, "fetch_json", return_value=self.names()) as fetch:
+            state = self.call("refresh_followed_carrier")
+        self.assertIsNone(state["pinned"])
+        self.assertEqual(fetch.call_count, 1)  # Both visits are in the same system.
+        self.assertTrue(fetch.call_args.args[0].startswith("https://edastro.com/api/starsystem?q="))
+        visited = next(r for r in state["visited"] if r["market_id"] == 3700000001)
+        self.assertEqual(visited["name"], "Tax Write-Off")
+        carrier = self.pin()["pinned"]
+        self.assertEqual(carrier["name"], "Tax Write-Off")
+        self.assertEqual(carrier["name_source"], "EDAstro")
+        self.assertEqual(carrier["callsign"], "TST-001")
+        self.assertEqual(carrier["source"], "journal")
+        self.assertEqual(carrier["system"], "Zaonce")
+
+    def test_name_resolves_even_when_location_report_is_stale(self):
+        before = self.pin()["pinned"]
+        state = self.refresh(self.report(updated_at="2026-10-21T00:00:00Z"), self.names())
+        self.assertEqual(state["pinned"]["name"], "Tax Write-Off")
+        for field in ("system", "star_pos", "source", "observed_at"):
+            self.assertEqual(state["pinned"][field], before[field])
+
+    def test_name_and_check_cache_survive_restart_and_new_journal_events(self):
+        self.pin()
+        self.refresh(self.report(), self.names())
+        restarted = make_core()
+        self.assertEqual(restarted.http.tools["get_followed_carrier"].fn({})["pinned"]["name"], "Tax Write-Off")
+        with patch.object(config, "OFFLINE", False), patch.object(restarted.services, "fetch_json", return_value=self.report()) as fetch:
+            state = restarted.http.tools["refresh_followed_carrier"].fn({})
+        self.assertEqual(state["pinned"]["name"], "Tax Write-Off")
+        self.assertTrue(all(call.args[0].startswith("https://spansh.co.uk/") for call in fetch.call_args_list))
+        self.core.bus.emit("journal.Docked", {
+            "timestamp": "2026-10-22T12:00:00Z", "event": "Docked", "StationName": "TST-001",
+            "StationType": "FleetCarrier", "MarketID": 3700000001, "StarSystem": "Sol",
+        })
+        self.assertEqual(self.call("get_followed_carrier")["pinned"]["name"], "Tax Write-Off")
+
+    def test_name_requires_matching_market_id_and_callsign(self):
+        self.pin()
+        for values in ({"marketID": 999}, {"callsign": "TST-002"}, {"name": " "}, {"name": "TST-001"}, {"name": None}):
+            with self.subTest(values=values), tempfile.TemporaryDirectory() as data, patch.object(config, "DATA_DIR", data):
+                # A fresh core avoids the hourly cache hiding later bad responses.
+                core = make_core()
+                with patch.object(config, "OFFLINE", False), patch.object(core.services, "fetch_json", return_value=self.names(**values)):
+                    state = core.http.tools["refresh_followed_carrier"].fn({})
+                self.assertTrue(all(r["name"] is None for r in state["visited"]))
+
+    def test_name_failure_does_not_block_location_update_and_is_throttled(self):
+        self.pin()
+
+        def fetch(url, **kwargs):
+            if url.startswith("https://edastro.com/"):
+                raise OSError("unavailable")
+            return self.report()
+
+        with patch.object(config, "OFFLINE", False), patch.object(self.core.services, "fetch_json", side_effect=fetch) as requests:
+            state = self.call("refresh_followed_carrier")
+            self.call("refresh_followed_carrier")
+        self.assertEqual(state["pinned"]["system"], "Lave")
+        self.assertIsNone(state["pinned"]["name"])
+        self.assertIsNone(state["error"])
+        self.assertEqual(sum(call.args[0].startswith("https://edastro.com/") for call in requests.call_args_list), 1)
+
+    def test_batch_name_results_match_carriers_across_systems(self):
+        self.pin()
+        state = self.refresh(self.report(), [self.names(), {"carriers": [
+            {"marketID": 3700000002, "callsign": "TST-002", "name": "Second Carrier"},
+        ]}])
+        self.assertEqual({r["name"] for r in state["visited"]}, {"Tax Write-Off", "Second Carrier"})
+
+    def test_expired_names_can_change_and_survive_missing_or_failed_rechecks(self):
+        self.pin()
+        self.refresh(self.report(), self.names())
+        for response in (self.names(name="New Carrier Name"), {"carriers": []}, OSError("unavailable")):
+            with self.subTest(response=response):
+                saved = self.core.read_data("carrier.json")
+                saved["name_checks"] = {}  # Simulate an expired persisted check.
+                self.core.write_data(saved, "carrier.json")
+                self.core = make_core()
+
+                def fetch(url, **kwargs):
+                    if not url.startswith("https://edastro.com/"):
+                        return self.report()
+                    if isinstance(response, Exception):
+                        raise response
+                    return response
+
+                with patch.object(config, "OFFLINE", False), patch.object(self.core.services, "fetch_json", side_effect=fetch):
+                    state = self.call("refresh_followed_carrier")
+                self.assertEqual(state["pinned"]["name"], "New Carrier Name")
 
     def test_discovers_visits_and_replayed_carrier_jump(self):
         state = self.call("get_followed_carrier")

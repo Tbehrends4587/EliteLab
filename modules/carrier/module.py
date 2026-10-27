@@ -8,12 +8,15 @@ from datetime import datetime, timezone
 import json
 import math
 import threading
+from urllib.parse import quote
 
 from elitelab.core.watcher import journal_files
 
 NS = "carrier"
 REFRESH_SECONDS = 300
 MAX_VISITED = 50
+NAME_REFRESH_SECONDS = 86400
+NAME_RETRY_SECONDS = 3600
 
 
 def timestamp(value):
@@ -31,6 +34,7 @@ class Carriers:
         self.wake = threading.Event()
         saved = core.read_data("carrier.json", default={}) or {}
         self.records = saved.get("records", {})
+        self.name_checks = saved.get("name_checks", {})
         self.positions = {}
         self.selected = saved.get("selected")
         if self.selected not in self.records:
@@ -50,19 +54,22 @@ class Carriers:
         with self.lock:
             pinned = copy.deepcopy(self.records.get(self.selected))
             if pinned:
+                pinned.setdefault("name", None)
+                pinned.setdefault("name_source", None)
                 ship = self.core.store.get("journal", "star_pos")
                 pos = pinned.get("star_pos")
                 pinned["distance"] = round(math.dist(ship, pos), 1) if ship and pos else None
             visited = sorted(self.records.values(), key=lambda r: timestamp(r.get("last_seen")), reverse=True)
             self.core.store.update(NS, {
                 "pinned": pinned,
-                "visited": [{k: r.get(k) for k in ("market_id", "callsign", "system", "last_seen")} for r in visited],
+                "visited": [{k: r.get(k) for k in ("market_id", "callsign", "name", "name_source", "system", "last_seen")} for r in visited],
                 "checked_at": self.checked_at, "error": self.error, "refreshing": self.refreshing,
                 "offline": self.core.config.OFFLINE,
             })
 
     def save(self):
-        self.core.write_data({"selected": self.selected, "records": self.records}, "carrier.json")
+        self.core.write_data({"selected": self.selected, "records": self.records,
+                              "name_checks": self.name_checks}, "carrier.json")
 
     def on_event(self, name, ev):
         self.observe(ev, persist=not ev.get("_replay"))
@@ -100,6 +107,7 @@ class Carriers:
                     break
                 if old != self.selected:
                     del self.records[old]
+                    self.name_checks.pop(old, None)
             if persist:
                 self.save()
             self.publish()
@@ -161,6 +169,61 @@ class Carriers:
         return self.core.store.get(NS)
 
     def refresh(self):
+        self.refresh_location()
+        self.refresh_names()
+        return self.core.store.get(NS)
+
+    def refresh_names(self):
+        """Resolve visited names off the journal thread, independently of location age.
+
+        EDAstro's documented system API includes carrier names; Spansh's station
+        name is usually just the callsign. Batch up to ten systems per request.
+        """
+        if not self.fetch_lock.acquire(blocking=False):
+            return
+        try:
+            with self.lock:
+                if self.core.config.OFFLINE:
+                    return
+                now = datetime.now(timezone.utc)
+                due = {key: (r["callsign"], r["system"]) for key, r in self.records.items()
+                       if r.get("system") and now.timestamp() - timestamp(self.name_checks.get(key)) >=
+                       (NAME_REFRESH_SECONDS if r.get("name") else NAME_RETRY_SECONDS)}
+            systems = sorted({system for _, system in due.values()})
+            for start in range(0, len(systems), 10):
+                batch = systems[start:start + 10]
+                names = {}
+                try:
+                    data = self.core.services.fetch_json(
+                        "https://edastro.com/api/starsystem?q=" + quote(",".join(batch), safe=""),
+                        ttl=NAME_RETRY_SECONDS)
+                    for system in data if isinstance(data, list) else [data]:
+                        for carrier in system.get("carriers") or []:
+                            key = str(carrier.get("marketID"))
+                            callsign = str(carrier.get("callsign", "")).strip().upper()
+                            name = carrier.get("name")
+                            if (key in due and callsign == due[key][0].strip().upper()
+                                    and isinstance(name, str) and name.strip()
+                                    and name.strip().upper() != callsign):
+                                names[key] = name.strip()
+                except Exception:
+                    # A failed/unknown lookup must not remove a saved name or
+                    # affect location tracking. Retry after an hour if unnamed.
+                    pass
+                with self.lock:
+                    for key, (callsign, system) in due.items():
+                        record = self.records.get(key)
+                        if system not in batch or not record or record["callsign"] != callsign:
+                            continue
+                        self.name_checks[key] = now.isoformat().replace("+00:00", "Z")
+                        if key in names:
+                            record.update(name=names[key], name_source="EDAstro")
+                    self.save()
+                    self.publish()
+        finally:
+            self.fetch_lock.release()
+
+    def refresh_location(self):
         if not self.fetch_lock.acquire(blocking=False):
             return self.core.store.get(NS)
         try:
@@ -208,7 +271,7 @@ class Carriers:
 def setup(core, module):
     carriers = Carriers(core)
     core.http.route("/api/carrier", lambda q: core.store.get(NS), tool="get_followed_carrier", module=module.name,
-                    description="Pinned fleet carrier's last reported system, services, source and observation time; also up to 50 visited carriers available to pin. Remote reports may be stale. Owner-only fuel and finance remain in get_commander_state.")
+                    description="Pinned fleet carrier's name, callsign, last reported system, services, source and observation time; also up to 50 visited carriers available to pin. Names come from EDAstro when known; name_source is separate from the location source. Remote reports may be stale. Owner-only fuel and finance remain in get_commander_state.")
     core.http.route("/api/carrier/pin", lambda q: carriers.pin(q.get("market_id")), method="POST",
                     tool="pin_fleet_carrier", module=module.name,
                     description="Persistently follow one visited fleet carrier. Choose its market_id from get_followed_carrier.visited. Replaces the previous pin; does not imply ownership.",
@@ -216,4 +279,4 @@ def setup(core, module):
     core.http.route("/api/carrier/unpin", lambda q: carriers.unpin(), method="POST", tool="unpin_fleet_carrier", module=module.name,
                     description="Remove the pinned fleet carrier. Keeps visited carriers and restores the owned-carrier card if available.")
     core.http.route("/api/carrier/refresh", lambda q: carriers.refresh(), method="POST", tool="refresh_followed_carrier", module=module.name,
-                    description="Check Spansh for the pinned carrier's last reported location and services. Cached for five minutes; older reports never replace newer journal observations. Offline mode keeps cached data.")
+                    description="Check Spansh for the pinned carrier's last reported location and services, and resolve visited carrier names through EDAstro. Location checks are cached for five minutes; older reports never replace newer journal observations. Names refresh daily, with hourly retries for unknown names. Works without a pin to resolve visited names. Offline mode keeps cached data.")

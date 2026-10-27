@@ -38,14 +38,16 @@ Conventions: `null` means unknown/not yet seen. Timestamps are the journal's ISO
 | Key | Type | Meaning |
 |---|---|---|
 | `pinned` | object or null | Selected visitor carrier; null means show the existing owned-carrier view |
-| `pinned.*` | `market_id, callsign, system, star_pos, services, docking, source, observed_at, last_seen, distance` | `distance` in Ly; `source` is `journal` or `Spansh`; unknown coordinates, distance and docking access are null |
-| `visited` | list | Up to 50 `{market_id, callsign, system, last_seen}` choices from journal visits, newest visits first; includes the pin |
+| `pinned.*` | `market_id, callsign, name, name_source, system, star_pos, services, docking, source, observed_at, last_seen, distance` | `name` and `name_source` are null until resolved through EDAstro; `distance` in Ly; location `source` is `journal` or `Spansh`; unknown coordinates, distance and docking access are null |
+| `visited` | list | Up to 50 `{market_id, callsign, name, name_source, system, last_seen}` choices from journal visits, newest visits first; includes the pin |
 | `checked_at` | ISO string or null | Last completed remote check, including failures; not the observation time |
 | `error` | string or null | Remote lookup failed; cached information remains visible |
 | `refreshing` | bool | Remote request in progress |
 | `offline` | bool | External lookups disabled by configuration |
 
 Selection and observations persist in `data/carrier.json`. `last_seen` is the latest local visit; `observed_at` dates the displayed location report. Remote reports replace observations only when strictly newer. Owner data remains in `journal.carrier`; the visitor namespace never writes it. Docked, docked Location and docked CarrierJump events are matched by MarketID, not station name. The map card receives a `pinned-carrier` layer from the carrier card script.
+
+Names are separate from location observations. EDAstro's system API is queried using the last known systems, in batches of up to ten; both Market ID and callsign must match. Names are checked daily, or hourly while unknown. Per-carrier attempt times persist as `name_checks` in `data/carrier.json`; responses use the shared one-hour cache. Failed or missing results retain the saved name, with the callsign displayed when no name is known. A carrier absent from the source's last known system may remain unnamed until it is reported there or a newer local/Spansh location becomes available.
 
 ## history (module: history)
 

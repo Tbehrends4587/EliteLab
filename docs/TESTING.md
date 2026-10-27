@@ -45,9 +45,11 @@ The HTTP transport itself (SSE framing, static path guard), the MCP server, the 
 
 ## Pinned fleet carriers
 
-`tests/test_carrier.py` uses `tests/fixtures/journals/carriers/` and a separate temporary data directory per test. It checks visited-carrier discovery, persistent pin/unpin, ownership separation, live and replayed location/jump observations, identity matching, remote freshness, missing optional fields, failed lookups, offline behavior, and pin changes during an in-flight request. External reports are mocked; no network is required.
+`tests/test_carrier.py` uses `tests/fixtures/journals/carriers/` and a separate temporary data directory per test. It checks visited-carrier discovery, persistent pin/unpin, ownership separation, live and replayed location/jump observations, identity matching, remote freshness, missing optional fields, failed lookups, offline behavior, and pin changes during an in-flight request. Name tests cover EDAstro identity checks, batched results, lookup without a pin, persistence, retry throttling, and names enriching stale location reports without changing location evidence. External reports are mocked; no network is required.
 
 For a manual check, enable the Fleet carrier card in Layout, pin a previously visited carrier, refresh, restart EliteLab, and verify the selection and observation survive. Check that the map marks the reported location and that docking at a different carrier does not change the pin. Unpin to restore owned-carrier details if present. Remote reports are last known observations, not live telemetry.
+
+With networking enabled, visited names resolve from EDAstro automatically or through Refresh. Check names and callsigns together in the picker, pinned card and map. Unknown names keep the callsign. Spansh station records often contain only the callsign; EDAstro supplies names through its [documented system API](https://edastro.com/api-details.html), using the last known system. Restart the server after Python changes; browser refresh loads updated card scripts.
 
 ## Manual checks before a release
 
