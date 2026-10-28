@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Rename Personal trading to Trading. Search Spansh station markets for one-way
+  trades or exact round trips, with independent return cargo and no fleet carriers.
+- Show separate outbound/return sections, combined profit, starting-credit needs,
+  station/report filters, coverage warnings and prefilled Inara route links.
+- Preserve ship capacity and laden-range inputs; improve Trading's mobile layout.
+
 ## 0.5.0 (2026-10-25)
 
 - Merit rate: three rates instead of one. The headline is the pace while earning (time between merit gains, gaps capped at 20 min), beside the rate while playing (any journal activity; a 10 min silence is a break) and the elapsed-session rate, plus the break count and an idle flag. A three-hour engineering stop used to halve the only figure shown.

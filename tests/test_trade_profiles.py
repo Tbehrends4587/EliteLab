@@ -1,5 +1,5 @@
 """Paired route search: price, distance, freshness and carrier accounting."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import unittest
 from unittest.mock import patch
 
@@ -33,6 +33,8 @@ class RouteTests(unittest.TestCase):
             return self.call("find_carrier_opportunities", **q)
 
     def test_online_reference_uses_mean_price_not_station_price_average(self):
+        # Windows clocks can give adjacent now() calls identical timestamps.
+        self.buys[0]['updatedAt']=(datetime.now(timezone.utc)-timedelta(seconds=1)).isoformat()
         self.sells[0]['meanPrice']=47214
         self.sells[0]['updatedAt']=datetime.now(timezone.utc).isoformat()
         with patch.object(self.core.services,'fetch_json',side_effect=self.fetch):
