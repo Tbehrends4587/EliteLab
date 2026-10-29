@@ -453,3 +453,8 @@ chosen within 5..1000 and the station spread, preserving nonnegative leg/owner
 margins. Profit totals and quotas use the resulting prices. Without a reference,
 preview values are explicitly targets and starting automatic crew pricing is
 rejected. Active job prices are frozen; refresh/override requires ending the job.
+
+Journal cargo items also expose `mission_id` from Cargo.json MissionID, allowing
+General Commodity Trading to exclude mission-owned goods from ordinary selling.
+Favorites and optional monitoring are browser state; no new server namespace is
+persisted for them. Actual sale history is reconstructed read-only from journals.

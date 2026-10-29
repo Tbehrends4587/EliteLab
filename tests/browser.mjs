@@ -43,7 +43,7 @@ try {
   await sleep(250);
   const inputAfter=await evaluate("({name:document.querySelector('#mat-q').value,qty:document.querySelector('#wl-qty').value,focus:document.activeElement.id})");
   // Personal search defaults to the live ship, preserves edits and escapes reports.
-  await evaluate(`document.querySelector('[data-preset="Trading"]').click();true`);
+  await evaluate(`document.querySelector('[data-preset="General Commodity Trading"]').click();true`);
   await sleep(100);
   const personal = await evaluate(`(async () => {
     const original=Lab.api, journal=Lab.state.journal, form=document.querySelector('[data-personal-search]');
@@ -86,6 +86,31 @@ try {
   assert.ok(personal.returnText.includes('Silver'));
   assert.equal(new URL(personal.inaraRoute).searchParams.get('pi7'),'1');
   assert.equal(new URL(personal.inaraRoute).searchParams.get('ps2'),'Destination [Alpha]');
+  const commodityFeatures = await evaluate(`(async()=>{
+    const el=document.querySelector('#card-personal > .body');
+    const api=Lab.api, interval=window.setInterval, clear=window.clearInterval;
+    let tick, cleared=false;
+    try {
+      window.setInterval=fn=>{tick=fn;return 1234567};window.clearInterval=id=>{if(id===1234567)cleared=true;else clear(id)};
+      el.querySelector('[data-favorite]').click();
+      const saved=el.querySelectorAll('[data-load-favorite]').length;
+      const instruction=el.querySelector('.trading-instruction').textContent;
+      el.querySelector('[data-monitor]').click();
+      const result=structuredClone(el._personal.result);result.rows[0].profit+=100;
+      Lab.api=async()=>result;
+      await tick();
+      const status=el.querySelector('[data-monitor-status]').textContent;
+      el.querySelector('[data-stop-monitor]').click();
+      el.querySelector('[data-remove-favorite]').click();
+      return {saved,instruction,status,cleared,remaining:el.querySelectorAll('[data-load-favorite]').length};
+    } finally {Lab.api=api;window.setInterval=interval;window.clearInterval=clear;}
+  })()`);
+  assert.equal(commodityFeatures.saved,1);
+  assert.ok(commodityFeatures.instruction.includes('BUY 100 t of Gold'));
+  assert.ok(commodityFeatures.instruction.includes('Then SELL Gold'));
+  assert.ok(commodityFeatures.status.includes('100 Cr change'));
+  assert.ok(commodityFeatures.cleared);
+  assert.equal(commodityFeatures.remaining,0);
   const tradingDesktop = await send('Page.captureScreenshot',{format:'png'});
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await sleep(200);

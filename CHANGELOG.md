@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- General Commodity Trading: optional fleet carriers, explicit BUY/SELL leg
+  instructions, affordability filtering, sorting and report-age summaries.
+- Add current-cargo buyers, browser-local favorites, actual commander sale
+  history and optional five-minute route monitoring while the panel is open.
+
 - Rename Personal trading to Trading. Search Spansh station markets for one-way
   trades or exact round trips, with independent return cargo and no fleet carriers.
 - Show separate outbound/return sections, combined profit, starting-credit needs,

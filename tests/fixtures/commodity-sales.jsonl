@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-28T10:00:00Z","event":"Commander","Name":"Trader"}
+{"timestamp":"2026-10-28T10:01:00Z","event":"Location","StarSystem":"Sol","StationName":"Daedalus"}
+{"timestamp":"2026-10-28T10:02:00Z","event":"MarketSell","MarketID":1,"Type":"gold","Count":10,"TotalSale":5000,"AvgPrice":200}
+{"timestamp":"2026-10-28T10:03:00Z","event":"MarketSell","MarketID":1,"Type":"silver","Count":2,"TotalSale":1000}
+{"timestamp":"2026-10-28T10:04:00Z","event":"Commander","Name":"Other"}
+{"timestamp":"2026-10-28T10:05:00Z","event":"MarketSell","MarketID":1,"Type":"gold","Count":10,"TotalSale":5000,"AvgPrice":0}

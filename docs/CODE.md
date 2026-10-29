@@ -283,3 +283,11 @@ market ID, or returns one-way legs. It keeps the existing HTTP/tool identity.
 Starting funds for a loop are max(outbound cost, return cost - outbound profit).
 The browser keeps filters across refreshes, migrates old search settings, and
 renders both legs without replacing the form on journal updates.
+
+General Commodity Trading extras live in `modules/personal/extras.py`. Historical
+sales are derived from journal files and cached by commander, period and file
+signatures. Cargo destinations reuse the personal module's market validation.
+Favorites persist per commander in browser localStorage. Monitoring pins station
+IDs, commodities and quantities, fetches every five minutes while mounted, guards
+against overlapping refreshes and stops on unmount. Missing results mean only
+that the route is no longer among checked/ranked results, not proof of no trade.

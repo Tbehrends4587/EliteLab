@@ -6,6 +6,7 @@ from elitelab.core.gamedata import is_rare
 
 STATIONS = 'https://www.spansh.co.uk/api/stations/search'
 ORBITAL = ['Coriolis Starport', 'Orbis Starport', 'Ocellus Starport', 'Dodec Starport', 'Asteroid base', 'Outpost']
+CARRIERS = ['Drake-Class Carrier']
 SURFACE = ['Planetary Port', 'Planetary Outpost', 'Settlement', 'Surface Settlement', 'Dockable Planet Station']
 
 
@@ -46,7 +47,7 @@ class Personal:
         # Spansh treats max=0 as unbounded. A tiny radius plus exact local name
         # matching restricts origin/destination searches to their actual system.
         filters = {'distance': {'min': 0, 'max': radius or 0.001}, 'has_market': {'value': True},
-                   'type': {'value': ORBITAL + (SURFACE if settings['surface'] else [])},
+                   'type': {'value': ORBITAL + (SURFACE if settings['surface'] else []) + (CARRIERS if settings['carriers'] else [])},
                    'market_updated_at': {'comparison': '<=>', 'value': [lower, upper]}}
         if settings['pad'] == 'L':
             filters['has_large_pad'] = {'value': True}
@@ -77,9 +78,9 @@ class Personal:
         return records, total, warnings
 
     def market(self, r, s, now):
-        if not isinstance(r, dict) or r.get('type') not in ORBITAL + (SURFACE if s['surface'] else []):
+        if not isinstance(r, dict) or r.get('type') not in ORBITAL + (SURFACE if s['surface'] else []) + (CARRIERS if s['carriers'] else []):
             return None
-        if not r.get('has_market') or r.get('carrier_name') or 'stronghold carrier' in str(r.get('name', '')).casefold():
+        if not r.get('has_market') or (not s['carriers'] and (r.get('carrier_name') or 'stronghold carrier' in str(r.get('name', '')).casefold())):
             return None
         if (type(r.get('market_id')) is not int or r['market_id'] <= 0
                 or not isinstance(r.get('name'), str) or not r['name']
@@ -114,7 +115,7 @@ class Personal:
             for target, price, volume in ((buys, item.get('buy_price'), item.get('supply')), (sells, item.get('sell_price'), item.get('demand'))):
                 if positive(price) and positive(volume) and volume >= s['quantity']:
                     target[name] = {'price': price, 'volume': volume}
-        return {'market_id': r['market_id'], 'station': r['name'], 'system': r['system_name'], 'pad': pad,
+        return {'carrier': r['type'] in CARRIERS, 'docking_access': r.get('carrier_docking_access'), 'age_hours': (now-observed.timestamp())/3600, 'market_id': r['market_id'], 'station': r.get('carrier_name') or r['name'], 'system': r['system_name'], 'pad': pad,
                 'arrival_ls': arrival, 'observed_at': observed.isoformat(), 'pos': pos, 'buys': buys, 'sells': sells}
 
     @staticmethod
@@ -143,6 +144,13 @@ class Personal:
         destination, station = system_name(q.get('destination', '')), system_name(q.get('station', ''))
         quantity = numeric(q, 'quantity', j.get('cargo_capacity'), 1000000, True)
         hours, breadth = numeric(q, 'hours', 24, 72, True), numeric(q, 'breadth', 100, 300, True)
+        carriers = str(q.get('carriers', '0'))
+        affordable = str(q.get('affordable', '0'))
+        sort = q.get('sort', 'profit')
+        if carriers not in ('0', '1') or affordable not in ('0', '1') or sort not in ('profit', 'distance', 'freshness', 'credits', 'roi'):
+            raise ValueError('Choose valid carrier, affordability and sort filters.')
+        if affordable == '1' and (type(j.get('credits')) not in (int,float) or not math.isfinite(j['credits'])):
+            raise ValueError('Credit balance unknown. Disable affordable-only or wait for your journal.')
         pad, route_type = q.get('pad', 'L'), q.get('route_type', 'round_trip')
         if pad not in ('S', 'M', 'L') or route_type not in ('one_way', 'round_trip'):
             raise ValueError('Choose a supported landing pad and route type.')
@@ -169,7 +177,7 @@ class Personal:
         if not isinstance(selected, str) or len(selected) > 100 or (selected and not selected.isalnum()):
             raise ValueError('Choose a commodity from the market list.')
         settings = dict(origin=origin, destination=destination, station=station, quantity=quantity, distance=distance,
-                        hours=hours, pad=pad, surface=surface == '1', arrival=arrival, route_type=route_type, breadth=breadth)
+                        hours=hours, pad=pad, surface=surface == '1', carriers=carriers == '1', affordable=affordable == '1', sort=sort, arrival=arrival, route_type=route_type, breadth=breadth)
         now = datetime.now(timezone.utc).timestamp()
         local, _, warnings = self.stations(settings, origin, 0, 100, now)
         origins = [m for r in local if (m := self.market(r, settings, now))
@@ -192,27 +200,40 @@ class Personal:
                     if route_type == 'round_trip' and not returning:
                         continue
                     for leg in outbound:
-                        legs = [leg] + returning[:1]
+                        eligible_returns = [r for r in returning if affordable != '1' or max(leg['cost'],r['cost']-leg['profit']) <= j['credits']]
+                        if returning and not eligible_returns:
+                            continue
+                        legs = [leg] + eligible_returns[:1]
                         profit, cost = sum(l['profit'] for l in legs), sum(l['cost'] for l in legs)
-                        required = max(leg['cost'], returning[0]['cost'] - leg['profit']) if returning else leg['cost']
+                        required = max(leg['cost'], eligible_returns[0]['cost'] - leg['profit']) if returning else leg['cost']
                         rows.append({**leg, 'legs': legs, 'route_type': route_type, 'profit': profit, 'cost': cost,
                                      'per_ton': profit / quantity, 'required_credits': required, 'return_on_cost': 100 * profit / cost,
                                      'distance': round(separation, 2), 'total_distance': round(separation * len(legs), 2),
                                      'estimated_jumps': (max(1, math.ceil(separation / laden)) if separation else 0) if laden else None})
         else:
             warnings.append('No fresh eligible starting market found. Check the station name, pad, report age and surface-station filters.')
-        rows.sort(key=lambda r: (-r['profit'], r['distance'], r['required_credits']))
+        if affordable == '1':
+            if type(j.get('credits')) not in (int, float) or not math.isfinite(j['credits']):
+                raise ValueError('Credit balance unknown. Disable affordable-only or wait for your journal.')
+            rows = [r for r in rows if r['required_credits'] <= j['credits']]
+        for row in rows:
+            row['age_hours'] = max(stop['age_hours'] for leg in row['legs'] for stop in (leg['buy'],leg['sell']))
+        keys = {'profit': lambda r: -r['profit'], 'distance': lambda r: r['distance'],
+                'freshness': lambda r: r['age_hours'], 'credits': lambda r: r['required_credits'], 'roi': lambda r: -r['return_on_cost']}
+        rows.sort(key=lambda r: (keys[sort](r), -r['profit'], r['distance']))
         return {'rows': rows[:30], 'commodities': [{'key': key, 'name': name} for key, name in sorted(catalog.items())],
                 'screened': checked, 'available': available, 'settings': settings, 'laden_range': laden,
                 'ship_capacity': j.get('cargo_capacity'), 'credits': j.get('credits'), 'source': 'Spansh / community markets',
                 'warnings': warnings, 'queried_at': datetime.now(timezone.utc).isoformat(),
-                'note': 'Nearest eligible stations, cached five minutes; not exhaustive. Fleet carriers excluded. Each leg requires reported supply and demand for the full load. Profit excludes fuel, fees and bonuses.'}
+                'note': 'Nearest eligible stations, cached five minutes; not exhaustive. Carrier access must be checked before departure when enabled. Each leg requires reported supply and demand for the full load. Profit excludes fuel, fees and bonuses.'}
 
 
 def setup(core, module):
+    from modules.personal.extras import setup_extras
+    setup_extras(core, module)
     search = Personal(core)
     core.http.route('/api/personal/routes', search.search, tool='find_personal_trade_routes', module=module.name,
-        description='Find ship-sized Spansh trades ranked by profit. Round trips return to the exact starting station with an independent return commodity. Origin defaults to current system; station optionally restricts the starting station. Destination is an optional system. Distance is per leg, at most 500 Ly; jumps use fully laden range as a straight-line estimate. Checks up to breadth nearest eligible stations (default 100, max 300), plus up to 100 origin markets; not exhaustive. Requires full-load positive supply and demand; excludes carriers. Five-minute cache. No game actions.',
+        description='Find ship-sized Spansh trades ranked by profit. Round trips return to the exact starting station with an independent return commodity. Origin defaults to current system; station optionally restricts the starting station. Destination is an optional system. Distance is per leg, at most 500 Ly; jumps use fully laden range as a straight-line estimate. Checks up to breadth nearest eligible stations (default 100, max 300), plus up to 100 origin markets; not exhaustive. Requires full-load positive supply and demand; carriers optional (excluded by default). Five-minute cache. No game actions.',
         params={'origin': {'type': 'string'}, 'station': {'type': 'string', 'default': ''},
                 'destination': {'type': 'string', 'default': ''},
                 'route_type': {'type': 'string', 'enum': ['one_way', 'round_trip'], 'default': 'round_trip'},
@@ -222,5 +243,8 @@ def setup(core, module):
                 'pad': {'type': 'string', 'enum': ['S', 'M', 'L'], 'default': 'L'},
                 'hours': {'type': 'integer', 'default': 24}, 'breadth': {'type': 'integer', 'default': 100},
                 'arrival': {'type': 'integer', 'default': 10000, 'description': 'Maximum approach in Ls; 0 means any.'},
+                'carriers': {'type': 'string', 'enum': ['0','1'], 'default': '0'},
+                'affordable': {'type': 'string', 'enum': ['0','1'], 'default': '0'},
+                'sort': {'type': 'string', 'enum': ['profit','distance','freshness','credits','roi'], 'default': 'profit'},
                 'surface': {'type': 'string', 'enum': ['0', '1'], 'default': '0'},
                 'commodity': {'type': 'string', 'default': '', 'description': 'Outbound key from results; return goods are independent.'}})

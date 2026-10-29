@@ -378,9 +378,9 @@ Spansh (https://spansh.co.uk) for station and system search, EDSM (https://www.e
 ## License
 
 MIT. See LICENSE.
-## Trading
+## General Commodity Trading
 
-Choose **Layout > Trading** for ship-sized Spansh trade routes.
+Choose **Layout > General Commodity Trading** for ship-sized Spansh trade routes.
 Leave Starting system blank to use your current journal location; leave
 Destination blank to search any buyer within range. Choose a light-year limit
 (up to 500 Ly), or an estimated number of jumps using your current ship's fully
@@ -390,8 +390,8 @@ your hold or budget is limited. The minimum pad defaults to Large and is editabl
 Choose **Round trip** (default) or **One way**. Round trips return to the exact
 starting station, with independently chosen return cargo. An optional starting
 station narrows the origin; the destination field is a system name. Each leg
-must have reported supply and positive demand for the full load. Fleet carriers
-are excluded; surface stations are optional and excluded by default.
+must have reported supply and positive demand for the full load. Fleet carriers and surface stations each have an inclusion toggle and are
+excluded by default. Carrier docking restrictions must be checked before travel.
 
 The search ranks up to 30 routes by combined load profit. Separate outbound and
 return sections show commodity prices, supply/demand, timestamps, approach
@@ -410,3 +410,22 @@ or capacity show a warning; reduce the load before flying them.
 Search results retain the original settings until you run another search.
 
 The `find_personal_trade_routes` tool exposes the same search via HTTP/MCP/CLI.
+
+Favorites are saved per commander in this browser and reload the route filters
+for a fresh search. Sort by total profit, distance, oldest report age, starting
+credits or return on purchase costs. Affordable-only searches use the current
+journal balance, including outbound profit available for the return purchase.
+
+**Sell cargo aboard** finds buyers within your origin/radius filters for legal,
+non-mission cargo. Results are sale revenue, not profit; demand can limit the
+sale to part of your hold. The cargo snapshot time is shown.
+
+**Completed sales** reads MarketSell journal events for the current commander.
+Choose 7/30/90 days or up to 10 years. Profit uses recorded AvgPrice; missing
+purchase cost remains unknown. Totals cover the selected period; the latest
+200 transactions are displayed. Fuel, fees and bonuses are excluded.
+
+**Monitor this route** checks the selected station IDs, goods and quantities
+every five minutes while the panel is open, displaying price/profit changes or
+a message when the route is no longer in the checked results. Monitoring is
+opt-in, stops when the panel closes, and does not perform game actions.

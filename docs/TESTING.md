@@ -147,3 +147,10 @@ without clicking the owner's rebalance controls.
 deliveries, unknown prices/quotas, overshoots, ended legs, and personal bonus
 exclusion. The browser suite runs it too, then checks personal and crew earnings
 after a delivery and after a commander leaves, plus narrow-screen layout.
+
+`test_commodity_features.py` covers fleet-carrier inclusion/access metadata,
+affordability, distance sorting, freshness, partial-demand cargo sales,
+mission ownership preservation and commander-filtered journal profit history.
+Fixtures are `commodity-sales.jsonl` and `journals/commodity-cargo/Cargo.json`.
+Browser checks cover explicit BUY/SELL instructions, favorite save/removal,
+monitor profit-change alerts and timer cleanup, alongside responsive layout.

@@ -305,7 +305,7 @@ optional starting station, and `destination` is an optional system name.
 `quantity` defaults to ship capacity. `distance` is a per-leg radius (max 500 Ly),
 or `distance_mode=jumps` uses `jumps * jump_range_laden` as an estimate.
 `pad` is S/M/L; `hours` defaults to 24 (max 72); `arrival` defaults to 10000 Ls
-(0 means any); `surface` is "0" or "1". Fleet carriers are always excluded.
+(0 means any); `surface` is "0" or "1". Fleet carriers are excluded by default; carriers=1 includes them.
 `breadth` now counts nearest eligible stations (default 100, max 300), not goods.
 `commodity` is an outbound selection key returned in `commodities[{key,name}]`;
 it never restricts the return cargo. The result includes up to 30 routes with
@@ -313,3 +313,23 @@ it never restricts the return cargo. The result includes up to 30 routes with
 `distance` per leg, `total_distance`, and `estimated_jumps` per leg.
 `screened`/`available` count nearby stations; coverage/errors appear in `warnings`.
 Reports are cached five minutes. No game action is performed.
+
+### General Commodity Trading additions
+
+`find_personal_trade_routes` now accepts `carriers=0|1` (default 0),
+`affordable=0|1` (default 0), and `sort=profit|distance|freshness|credits|roi`.
+Affordable-only uses reported credits and chooses the most profitable affordable
+return leg. Unknown credit balance is an error in affordable-only mode.
+Rows include `age_hours` for the oldest market report; stops include `carrier`
+and `docking_access` when available. Inclusion does not guarantee docking access.
+
+`find_cargo_sell_markets` / `/api/personal/cargo` searches current non-stolen,
+non-mission ship cargo using origin/radius/pad/age/approach/surface/carrier/breadth
+filters. Quantities are capped by positive demand. The response labels revenue
+separately from profit and reports the cargo snapshot timestamp.
+
+`get_commodity_sale_history` / `/api/personal/history?days=30` scans the current
+commander's MarketSell events over 1-3650 days. Each sale uses TotalSale minus
+Count times AvgPrice; absent AvgPrice yields null profit. Totals include every
+sale in the period, with the latest 200 rows returned. Other commanders are
+excluded. No journal or game state is modified.
