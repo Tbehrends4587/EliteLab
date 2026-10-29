@@ -94,7 +94,7 @@ try {
       window.setInterval=fn=>{tick=fn;return 1234567};window.clearInterval=id=>{if(id===1234567)cleared=true;else clear(id)};
       el.querySelector('[data-favorite]').click();
       const saved=el.querySelectorAll('[data-load-favorite]').length;
-      const instruction=el.querySelector('.trading-instruction').textContent;
+      const instruction=el.querySelector('.trading-leg-title').textContent;
       el.querySelector('[data-monitor]').click();
       const result=structuredClone(el._personal.result);result.rows[0].profit+=100;
       Lab.api=async()=>result;
@@ -106,8 +106,7 @@ try {
     } finally {Lab.api=api;window.setInterval=interval;window.clearInterval=clear;}
   })()`);
   assert.equal(commodityFeatures.saved,1);
-  assert.ok(commodityFeatures.instruction.includes('BUY 100 t of Gold'));
-  assert.ok(commodityFeatures.instruction.includes('Then SELL Gold'));
+  assert.equal(commodityFeatures.instruction,'Outbound: Gold');
   assert.ok(commodityFeatures.status.includes('100 Cr change'));
   assert.ok(commodityFeatures.cleared);
   assert.equal(commodityFeatures.remaining,0);

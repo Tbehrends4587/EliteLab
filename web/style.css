@@ -228,7 +228,7 @@ label.chk input { margin: 4px 0 0; } label.chk.done .n { text-decoration: line-t
 .trading-total strong { font-size: 20px; font-variant-numeric: tabular-nums; }
 .trading-metrics { display: flex; flex-wrap: wrap; gap: 8px 20px; color: var(--muted); font-size: 12px; margin: 6px 0 14px; }
 .trading-leg { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
-.trading-instruction { padding: 12px; border-left: 3px solid var(--accent); background: rgba(255,150,30,.06); line-height: 1.8; overflow-wrap: anywhere; }
+.trading-leg-title { font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
 .trading-body [data-monitor-status] { margin: 12px 0; overflow-wrap: anywhere; }
 .trading-station { font-weight: 600; overflow-wrap: anywhere; }
 .trading-actions { margin-top: 10px; flex-wrap: wrap; }
