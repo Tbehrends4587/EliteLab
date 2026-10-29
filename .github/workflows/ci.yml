@@ -69,7 +69,20 @@ jobs:
         run: docker build -t elitelab:ci .
       - name: Smoke test against the fixture journal
         run: |
+          set -euo pipefail
+          trap 'docker logs lab || true; docker rm -f lab || true' EXIT
           docker run -d --name lab -p 8766:8766 -v "$PWD/tests/fixtures/journals:/journals:ro" -e ELITELAB_OFFLINE=1 elitelab:ci
-          for i in $(seq 1 20); do curl -fs http://localhost:8766/api/health && break; sleep 1; done
-          curl -fs http://localhost:8766/api/journal | python3 -c "import sys,json; j=json.load(sys.stdin); assert j['cmdr']=='Testpilot', j; print('ok', j['ship'])"
-          docker rm -f lab
+          for i in $(seq 1 45); do
+            if [ "$(docker inspect -f '{{.State.Running}}' lab)" != true ]; then
+              echo "Container exited before becoming ready" >&2
+              exit 1
+            fi
+            if curl -fsS --max-time 2 http://127.0.0.1:8766/api/health -o /tmp/lab-health.json &&
+               curl -fsS --max-time 2 http://127.0.0.1:8766/api/journal -o /tmp/lab-journal.json &&
+               python3 -c "import json; h=json.load(open('/tmp/lab-health.json')); j=json.load(open('/tmp/lab-journal.json')); assert h.get('ready') and j.get('cmdr')=='Testpilot'; print('ok', j['ship'])"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Dashboard or fixture replay did not become ready within 45 attempts" >&2
+          exit 1
