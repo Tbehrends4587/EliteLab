@@ -308,11 +308,22 @@ or `distance_mode=jumps` uses `jumps * jump_range_laden` as an estimate.
 (0 means any); `surface` is "0" or "1". Fleet carriers are excluded by default; carriers=1 includes them.
 `breadth` now counts nearest eligible stations (default 100, max 300), not goods.
 `commodity` is an outbound selection key returned in `commodities[{key,name}]`;
-it never restricts the return cargo. The result includes up to 30 routes with
+it never restricts the return cargo. `limit` selects 1-30 results (default 5),
+applied after ranking all checked routes. The result includes routes with
 `legs`, `profit`, combined `cost`, `required_credits`, `return_on_cost` (percent),
 `distance` per leg, `total_distance`, and `estimated_jumps` per leg.
 `screened`/`available` count nearby stations; coverage/errors appear in `warnings`.
 Reports are cached five minutes. No game action is performed.
+
+`scope=nearby` discovers distinct station-pair round trips without requiring a
+market in the reference system. `radius` limits travel to the starting station
+(default 100 Ly, max 500), independently of `distance` per trading leg. The
+candidate query covers radius + distance, bounded by `breadth`; both directions
+are evaluated and duplicate pairs are removed after sorting. Results include
+`start_distance` and `matched` (qualifying routes before the result limit).
+The nearby widget defaults to 300 markets and five results, with 1/3/5/10/20/30
+result choices. `destination_station` optionally restricts a local search to an
+exact station so selecting a nearby result can recheck the same pair.
 
 ### General Commodity Trading additions
 

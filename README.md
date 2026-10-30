@@ -381,6 +381,15 @@ MIT. See LICENSE.
 ## General Commodity Trading
 
 Choose **Layout > General Commodity Trading** for ship-sized Spansh trade routes.
+
+**Best Nearby Trade Routes** finds round trips even when your current system has
+no suitable market. It shows the five highest-paying distinct station pairs
+found by default; choose 1, 3, 5, 10, 20 or 30 results. Set travel distance to the
+starting station independently of the trading-leg distance. **Use route** loads
+the pair into General Commodity Trading for a fresh check, favorites and monitoring.
+Discovery checks up to 300 nearby eligible stations, so results are the best
+among markets checked, not a galaxy-wide guarantee. Existing layouts can enable
+the widget in the Layout menu.
 Leave Starting system blank to use your current journal location; leave
 Destination blank to search any buyer within range. Choose a light-year limit
 (up to 500 Ly), or an estimated number of jumps using your current ship's fully

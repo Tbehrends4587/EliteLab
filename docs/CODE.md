@@ -284,6 +284,14 @@ Starting funds for a loop are max(outbound cost, return cost - outbound profit).
 The browser keeps filters across refreshes, migrates old search settings, and
 renders both legs without replacing the form on journal updates.
 
+Nearby discovery uses the same trading module and market validation, exposed by
+the `nearby-trades` card (`nearby.js`). It checks bounded candidates within
+travel radius + leg distance, allowing starts only within travel radius using
+Spansh's reference-system distances. It ranks before deduplicating station pairs
+and applying `limit` (default five). `Lab.set('personal', {selection})` hands the
+selected station pair and outbound commodity to the main card for a fresh query.
+Both cards persist their own filters; result count does not alter search breadth.
+
 General Commodity Trading extras live in `modules/personal/extras.py`. Historical
 sales are derived from journal files and cached by commander, period and file
 signatures. Cargo destinations reuse the personal module's market validation.

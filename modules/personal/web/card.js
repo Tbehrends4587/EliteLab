@@ -24,7 +24,7 @@
     ${result.credits != null && r.required_credits > result.credits ? '<p class="warn">Starting credits needed exceed your reported balance. Reduce the load.</p>' : ''}
     ${result.ship_capacity != null && r.quantity > result.ship_capacity ? '<p class="warn">Load exceeds your reported ship capacity.</p>' : ''}</article>`;
   Lab.card({
-    id: 'personal', requires: ['journal'],
+    id: 'personal', requires: ['journal', 'personal'],
     mount(el) {
       el._personal = {destroyed: false};
       el.classList.add('trading-body');
@@ -34,6 +34,7 @@
           <label>Starting system<input name="origin" maxlength="160" placeholder="Current system"></label>
           <label>Starting station (optional)<input name="station" maxlength="160" placeholder="Any eligible station in system"></label>
           <label>Destination system (optional)<input name="destination" maxlength="160" placeholder="Any system within range"></label>
+          <label>Destination station (optional)<input name="destination_station" maxlength="160" placeholder="Any eligible station"></label>
           <label>Load per leg (t)<input name="quantity" type="number" min="1" max="1000000" placeholder="Current ship capacity"></label>
           <label>Distance limit<select name="distance_mode"><option value="ly">Light-years per leg</option><option value="jumps">Estimated laden jumps per leg</option></select></label>
           <label data-ly>Maximum distance per leg (Ly)<input name="distance" type="number" min="0.1" max="500" step="0.1" value="80" required></label>
@@ -44,6 +45,7 @@
           <label>Fleet carriers<select name="carriers"><option value="0">Exclude</option><option value="1">Include (check docking access)</option></select></label><label>Credit affordability<select name="affordable"><option value="0">Show all (warn if over budget)</option><option value="1">Affordable routes only</option></select></label><label>Sort by<select name="sort"><option value="profit">Highest profit</option><option value="distance">Shortest distance</option><option value="freshness">Freshest reports</option><option value="credits">Lowest starting credits</option><option value="roi">Highest return on cost</option></select></label><label>Surface stations<select name="surface"><option value="0">Exclude</option><option value="1">Include</option></select></label>
           <label>Outbound commodity<select name="commodity"><option value="">All available goods</option></select></label>
           <label>Search breadth<select name="breadth"><option value="100">100 nearest eligible stations</option><option value="200">200 nearest eligible stations</option><option value="300">300 nearest eligible stations</option></select></label>
+          <label>Routes to show<select name="limit"><option>1</option><option>3</option><option selected>5</option><option>10</option><option>20</option><option>30</option></select></label>
           <div class="trade-wide note" data-ship-context></div>
           <div class="trade-wide row"><button type="submit" class="mini primary">Find routes</button><span class="note">Carrier inclusion follows your filter. Round trips return to the same station; return cargo is chosen independently.</span></div>
         </form><p class="note trading-status" data-personal-status role="status">Choose your filters and find routes. Blank load uses your ship capacity.</p><div class="row"><button type="button" class="mini" data-cargo>Sell cargo aboard</button><label>Sales history <select data-history-days><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="3650">Up to 10 years</option></select></label><button type="button" class="mini" data-history>Load completed sales</button></div><div data-extras role="status"></div><details><summary>Favorite routes</summary><div data-favorites></div></details><div data-monitor-status role="status"></div><button type="button" class="mini" data-stop-monitor hidden>Stop monitoring</button><div class="trade-pairs" data-personal-results></div>`;
@@ -74,7 +76,7 @@
         const b=event.target.closest('button'); if(!b)return;
         if(b.dataset.favorite != null || b.dataset.monitor != null){
           const index=Number(b.dataset.favorite ?? b.dataset.monitor), result=el._personal.result, r=result?.rows[index];if(!r)return;
-          const params={...el._personal.params, origin:r.legs[0].buy.system, station:r.legs[0].buy.station, destination:r.legs[0].sell.system};
+          const params={...el._personal.params, limit:30, origin:r.legs[0].buy.system, station:r.legs[0].buy.station, destination:r.legs[0].sell.system, destination_station:r.legs[0].sell.station};
           const label=r.legs.map(l=>l.commodity).join(' / ')+' | '+r.legs[0].buy.station+' - '+r.legs[0].sell.station;
           if(b.dataset.favorite != null){const all=favorites();if(!all.some(f=>f.id===identity(r)))all.push({id:identity(r),label,params});ls.set(favoriteKey(),all.slice(-50));drawFavorites();return;}
           stopMonitoring(); const monitor={id:identity(r),profit:r.profit,params,busy:false};el._personal.monitor=monitor;
@@ -116,6 +118,19 @@
     },
     render(el, S) {
       const j = S.journal || {}, form = el.querySelector('form');
+      const selection = S.personal?.selection;
+      if (selection && el._personal.selection !== selection) {
+        el._personal.selection = selection;
+        if (selection.commodity && ![...form.elements.commodity.options].some(o => o.value === selection.commodity)) {
+          const option = document.createElement('option'); option.value = selection.commodity; option.textContent = selection.commodity;
+          form.elements.commodity.append(option);
+        }
+        for (const [key, value] of Object.entries(selection)) {
+          if (form.elements[key]) form.elements[key].value = String(value);
+        }
+        form.elements.distance_mode.dispatchEvent(new Event('change'));
+        form.requestSubmit();
+      }
       form.elements.origin.placeholder = j.system || 'Enter starting system';
       form.elements.quantity.placeholder = j.cargo_capacity ? `${fmt(j.cargo_capacity)} t` : 'Enter load size';
       el.querySelector('[data-ship-context]').textContent = `${j.ship_name || j.ship || 'Current ship'} | ${j.system || 'Location unknown'} | ${j.cargo_capacity == null ? 'Capacity unknown' : fmt(j.cargo_capacity) + ' t capacity'} | ${j.jump_range_laden == null ? 'Laden range unknown; use light-years' : fmt(j.jump_range_laden) + ' Ly fully laden'}. Jump limits are straight-line estimates, not plotted navigation. Results retain their search settings and prices until searched again.`;

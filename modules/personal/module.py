@@ -142,8 +142,17 @@ class Personal:
         if not origin:
             raise ValueError('Enter a starting system or wait for your journal location.')
         destination, station = system_name(q.get('destination', '')), system_name(q.get('station', ''))
+        destination_station = system_name(q.get('destination_station', ''))
         quantity = numeric(q, 'quantity', j.get('cargo_capacity'), 1000000, True)
         hours, breadth = numeric(q, 'hours', 24, 72, True), numeric(q, 'breadth', 100, 300, True)
+        limit = numeric(q, 'limit', 5, 30, True)
+        scope = q.get('scope', 'local')
+        if scope not in ('local', 'nearby'):
+            raise ValueError('Choose local or nearby discovery.')
+        radius = numeric(q, 'radius', 100, 500)
+        if scope == 'nearby':
+            destination, station = '', ''
+            destination_station = ''
         carriers = str(q.get('carriers', '0'))
         affordable = str(q.get('affordable', '0'))
         sort = q.get('sort', 'profit')
@@ -152,6 +161,8 @@ class Personal:
         if affordable == '1' and (type(j.get('credits')) not in (int,float) or not math.isfinite(j['credits'])):
             raise ValueError('Credit balance unknown. Disable affordable-only or wait for your journal.')
         pad, route_type = q.get('pad', 'L'), q.get('route_type', 'round_trip')
+        if scope == 'nearby':
+            route_type = 'round_trip'
         if pad not in ('S', 'M', 'L') or route_type not in ('one_way', 'round_trip'):
             raise ValueError('Choose a supported landing pad and route type.')
         surface = str(q.get('surface', '0'))
@@ -176,19 +187,23 @@ class Personal:
         selected = q.get('commodity', '')
         if not isinstance(selected, str) or len(selected) > 100 or (selected and not selected.isalnum()):
             raise ValueError('Choose a commodity from the market list.')
-        settings = dict(origin=origin, destination=destination, station=station, quantity=quantity, distance=distance,
-                        hours=hours, pad=pad, surface=surface == '1', carriers=carriers == '1', affordable=affordable == '1', sort=sort, arrival=arrival, route_type=route_type, breadth=breadth)
+        settings = dict(origin=origin, destination=destination, station=station, destination_station=destination_station, quantity=quantity, distance=distance,
+                        hours=hours, pad=pad, surface=surface == '1', carriers=carriers == '1', affordable=affordable == '1', sort=sort, arrival=arrival, route_type=route_type, breadth=breadth, scope=scope, radius=radius, limit=limit)
         now = datetime.now(timezone.utc).timestamp()
-        local, _, warnings = self.stations(settings, origin, 0, 100, now)
+        local, total, warnings = self.stations(settings, origin, radius + distance if scope == 'nearby' else 0, breadth if scope == 'nearby' else 100, now)
+        # Spansh reports distance from the reference system even if it has no market.
+        offsets = {r.get('market_id'): r.get('distance') for r in local if isinstance(r, dict)}
         origins = [m for r in local if (m := self.market(r, settings, now))
-                   and m['system'].casefold() == origin.casefold() and (not station or m['station'].casefold() == station.casefold())]
+                   and ((type(r.get('distance')) in (int, float) and math.isfinite(r['distance']) and 0 <= r['distance'] <= radius)
+                        if scope == 'nearby' else m['system'].casefold() == origin.casefold() and (not station or m['station'].casefold() == station.casefold()))]
         catalog = {commodity_key(name): name for m in origins for name in m['buys']}
         rows, checked, available = [], 0, 0
         if origins:
-            nearby, available, notes = self.stations(settings, destination or origin, 0 if destination else distance, breadth, now)
+            nearby, available, notes = (local, total, []) if scope == 'nearby' else self.stations(settings, destination or origin, 0 if destination else distance, breadth, now)
             warnings.extend(notes)
             markets = {m['market_id']: m for r in nearby if (m := self.market(r, settings, now))
-                       and (not destination or m['system'].casefold() == destination.casefold())}
+                       and (not destination or m['system'].casefold() == destination.casefold())
+                       and (not destination_station or m['station'].casefold() == destination_station.casefold())}
             checked = len(nearby)
             for start in origins:
                 for end in markets.values():
@@ -207,6 +222,7 @@ class Personal:
                         profit, cost = sum(l['profit'] for l in legs), sum(l['cost'] for l in legs)
                         required = max(leg['cost'], eligible_returns[0]['cost'] - leg['profit']) if returning else leg['cost']
                         rows.append({**leg, 'legs': legs, 'route_type': route_type, 'profit': profit, 'cost': cost,
+                                     'start_distance': offsets.get(start['market_id']) if scope == 'nearby' else 0,
                                      'per_ton': profit / quantity, 'required_credits': required, 'return_on_cost': 100 * profit / cost,
                                      'distance': round(separation, 2), 'total_distance': round(separation * len(legs), 2),
                                      'estimated_jumps': (max(1, math.ceil(separation / laden)) if separation else 0) if laden else None})
@@ -220,8 +236,15 @@ class Personal:
             row['age_hours'] = max(stop['age_hours'] for leg in row['legs'] for stop in (leg['buy'],leg['sell']))
         keys = {'profit': lambda r: -r['profit'], 'distance': lambda r: r['distance'],
                 'freshness': lambda r: r['age_hours'], 'credits': lambda r: r['required_credits'], 'roi': lambda r: -r['return_on_cost']}
-        rows.sort(key=lambda r: (keys[sort](r), -r['profit'], r['distance']))
-        return {'rows': rows[:30], 'commodities': [{'key': key, 'name': name} for key, name in sorted(catalog.items())],
+        rows.sort(key=lambda r: (keys[sort](r), -r['profit'], r['start_distance'] or 0, r['distance']))
+        if scope == 'nearby':
+            unique = {}
+            for row in rows:
+                pair = tuple(sorted((row['buy']['market_id'], row['sell']['market_id'])))
+                unique.setdefault(pair, row)
+            rows = list(unique.values())
+            checked, available = len(local), total
+        return {'rows': rows[:limit], 'matched': len(rows), 'commodities': [{'key': key, 'name': name} for key, name in sorted(catalog.items())],
                 'screened': checked, 'available': available, 'settings': settings, 'laden_range': laden,
                 'ship_capacity': j.get('cargo_capacity'), 'credits': j.get('credits'), 'source': 'Spansh / community markets',
                 'warnings': warnings, 'queried_at': datetime.now(timezone.utc).isoformat(),
@@ -235,7 +258,11 @@ def setup(core, module):
     core.http.route('/api/personal/routes', search.search, tool='find_personal_trade_routes', module=module.name,
         description='Find ship-sized Spansh trades ranked by profit. Round trips return to the exact starting station with an independent return commodity. Origin defaults to current system; station optionally restricts the starting station. Destination is an optional system. Distance is per leg, at most 500 Ly; jumps use fully laden range as a straight-line estimate. Checks up to breadth nearest eligible stations (default 100, max 300), plus up to 100 origin markets; not exhaustive. Requires full-load positive supply and demand; carriers optional (excluded by default). Five-minute cache. No game actions.',
         params={'origin': {'type': 'string'}, 'station': {'type': 'string', 'default': ''},
+                'scope': {'type': 'string', 'enum': ['local', 'nearby'], 'default': 'local', 'description': 'Nearby finds distinct station-pair loops with a starting station within radius of origin.'},
+                'radius': {'type': 'number', 'default': 100, 'description': 'Maximum distance to start in nearby mode, up to 500 Ly. Candidate coverage is bounded by breadth.'},
+                'limit': {'type': 'integer', 'default': 5, 'description': 'Return the top 1-30 results after ranking all checked candidates.'},
                 'destination': {'type': 'string', 'default': ''},
+                'destination_station': {'type': 'string', 'default': '', 'description': 'Optional exact destination station name.'},
                 'route_type': {'type': 'string', 'enum': ['one_way', 'round_trip'], 'default': 'round_trip'},
                 'quantity': {'type': 'integer', 'description': 'Tonnes each leg; defaults to ship capacity.'},
                 'distance_mode': {'type': 'string', 'enum': ['ly', 'jumps'], 'default': 'ly'},

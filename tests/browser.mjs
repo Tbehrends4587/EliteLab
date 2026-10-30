@@ -110,6 +110,33 @@ try {
   assert.ok(commodityFeatures.status.includes('100 Cr change'));
   assert.ok(commodityFeatures.cleared);
   assert.equal(commodityFeatures.remaining,0);
+  const nearbyTrades = await evaluate(`(async()=>{
+    const api=Lab.api, el=document.querySelector('#card-nearby-trades > .body');
+    const form=el.querySelector('form'), detail=document.querySelector('#card-personal > .body');
+    const result=structuredClone(detail._personal.result);result.matched=12;
+    result.rows[0].start_distance=42;result.rows[0].age_hours=2;
+    const requests=[];
+    Lab.api=async(path,params)=>{requests.push({...params});return result};
+    try {
+      const defaultLimit=form.elements.limit.value;
+      form.elements.limit.value='3';
+      await form.onsubmit({preventDefault(){}});
+      const images=el.querySelectorAll('img').length;
+      el.querySelector('[data-use-nearby]').click();
+      Lab.cards.personal.render(detail,Lab.state);
+      await new Promise(r=>setTimeout(r,50));
+      return {defaultLimit,requests,images,text:el.textContent,station:detail.querySelector('form').elements.destination_station.value};
+    } finally {Lab.api=api;}
+  })()`);
+  assert.equal(nearbyTrades.defaultLimit,'5');
+  assert.equal(nearbyTrades.requests[0].limit,'3');
+  assert.equal(nearbyTrades.requests[0].scope,'nearby');
+  assert.equal(nearbyTrades.requests[0].breadth,'300');
+  assert.equal(nearbyTrades.requests[1].destination_station,'Destination');
+  assert.equal(nearbyTrades.requests[1].commodity,'gold');
+  assert.equal(nearbyTrades.station,'Destination');
+  assert.equal(nearbyTrades.images,0);
+  assert.ok(nearbyTrades.text.includes('42 Ly to start'));
   const tradingDesktop = await send('Page.captureScreenshot',{format:'png'});
   await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
   await sleep(200);
